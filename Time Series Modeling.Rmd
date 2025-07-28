@@ -1,0 +1,650 @@
+---
+title: "FE_PROJECT"
+author: "Gautam Prasad"
+date: "2025-07-03"
+output: html_document
+---
+
+# Library
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+library(quantmod)
+library(tseries)
+library(FinTS)
+library(fracdiff)
+library(lmtest)
+library(forecast)
+library(ggplot2)
+library(reshape2)
+library(scales)
+library(rugarch)
+library(PerformanceAnalytics)
+library(urca)
+library(zoo)
+library(xts)
+```
+
+# Data (Stock - Reliance & Index - Nifty 50)
+``` {r}
+getSymbols(c("^NSEI", "RELIANCE.NS"), src = "yahoo", from = "2021-10-01", to = "2025-01-01", periodicity = "d")
+
+merged_prices <- merge(Cl(NSEI), Cl(RELIANCE.NS))  
+colnames(merged_prices) <- c("Nifty50", "Reliance")
+
+#Calculate Daily Log Returns (in percent)
+log_returns <- na.omit(100 * diff(log(merged_prices)))
+stock <- log_returns$Reliance
+index <- log_returns$Nifty50
+
+```
+
+## Plots (log return, Acf & Pacf)
+```{r}
+par(mfrow = c(2, 1))
+plot(stock, main = "Reliance Log Returns", col = "black", ylab = "Log Return", xlab = "Date", type = "l")
+plot(index, main = "Nifty 50 Log Returns", col = "skyblue", ylab = "Log Return", xlab = "Date", type = "l")
+
+par(mfrow = c(2, 2))
+asset_name = "Reliance"
+Acf(stock, main = paste("Reliance - ", "ACF"))
+Pacf(stock, main = paste("Reliance - ", "PACF"))
+
+asset_name = "Nifty 50"
+Acf(index, main = paste("Nifty 50 - ", "ACF"))
+Pacf(index, main = paste("Nifty 50 - ", "PACF"))
+
+```
+
+##  Test (Normality,Unit Root Test, ARCH Effect Test, Long Memory Test, signbias_test)
+
+# Normality Test
+```{r}
+shapiro.test(coredata(stock)) 
+# Data is not normally distributed 
+
+shapiro.test(coredata(index))
+# Data is not normally distributed
+
+cat("Both Stock and Index are ** Non-Normal Distributed **")
+
+
+```
+
+##  Unit Root ADF
+```{r}
+adf.test(stock) 
+# staionary data
+adf.test(index) 
+# staionary data
+
+cat("Both Stock and Index are ** Stationary **")
+```
+
+## Long memory test
+
+```{r}
+fracdiff(stock)
+# d = 4.58e-05 (≈ 0) => does not exhibit long memory
+
+fracdiff(index)
+# d = 4.583013e-05 (≈ 0) => does not exhibit long memory
+
+cat("Both Stock and Index have ** Short memory **")
+
+
+```
+
+##  ARCH test
+```{r}
+ArchTest(stock, lags = 10)
+#  Arch-Effect is Present  
+
+ArchTest(index, lags = 10)
+# Arch-Effect is Present  
+
+cat("Both Stock and Index have ** significant ARCH effects **")
+
+
+
+```
+
+#  Sign Bias test
+```{r}
+
+garch_spec <- ugarchspec(
+  variance.model = list(model = "sGARCH", garchOrder = c(1,1)),
+  mean.model     = list(armaOrder = c(1,1), include.mean = TRUE),
+  distribution.model = "norm"
+)
+
+garch_fit_stock <- ugarchfit(spec = garch_spec, data = stock)
+garch_fit_index <- ugarchfit(spec = garch_spec, data = index)
+
+
+signbias(garch_fit_stock)
+signbias(garch_fit_index)
+
+cat("Both Stock and Index have ** No significant asymmetry  **")
+
+
+```
+
+#  ARMA Model - stock (Reliance)
+```{r}
+
+# ARMA (0,0)
+arma00 <- arima(stock, order = c(0,0,0)) # log likelihood = -1437.64,  aic = 2879.28
+summary(arma00)
+
+# ARMA(1,0)
+arma10 <- arima(stock, order = c(1,0,0)) # log likelihood = -1437.53,  aic = 2881.07
+summary(arma10)
+
+# ARMA(0,1)
+arma01 <- arima(stock, order = c(0,0,1)) # log likelihood = -1437.54,  aic = 2881.07
+summary(arma01)
+
+# ARMA(1,1)
+arma11 <- arima(stock, order = c(1,0,1)) # log likelihood = -1436.76,  aic = 2881.53
+summary(arma11)
+
+# ARMA(2,0)
+arma20 <- arima(stock, order = c(2,0,0)) #  log likelihood = -1437.47,  aic = 2882.94
+summary(arma20)
+
+# ARMA(0,2)
+arma02 <- arima(stock, order = c(0,0,2)) #  log likelihood = -1437.5,  aic = 2882.99
+summary(arma02)
+
+# ARMA(2,2)
+arma22 <- arima(stock, order = c(2,0,2)) # log likelihood = -1432.85,  aic = 2877.71
+summary(arma22)
+
+#ARMA(3,0)
+arma30 <- arima(stock, order = c(3,0,0)) # log likelihood = -1434.36,  aic = 2878.72
+summary(arma30)
+
+#ARMA(0,3)
+arma03 <- arima(stock, order = c(0,0,3)) # log likelihood = -1434.68,  aic = 2879.35
+summary(arma03)
+
+# ARMA(3,3)
+arma33 <- arima(stock, order = c(3,0,3)) # log likelihood = -1431.77,  aic = 2879.54
+summary(arma33)
+
+
+```
+
+
+##  Best Model - Stock (reliance) 
+```{r } 
+cat("Best Model is ---->  ** arma(2,2) ** ")
+
+# Among all the model, 
+#(2,2) has lowest AIC with aic(2,2) = 2877.71,
+# Also, coefficient ar1,ar2 and ma1, ma2 is statstically significant
+
+arma_residuals <- residuals(arma22)
+
+#Heteroskedasticity
+ArchTest(arma_residuals, lags = 10)
+# Presence of ARCH effects => consider GARCH models
+
+# White noise
+Box.test(arma_residuals, lag = 10, type = "Ljung-Box") # p-value = 0.3489
+# Residuals are not autocorrelated and behave like white noise
+
+# Normality test
+shapiro.test(arma_residuals) 
+# Residuals are not normally distributed (presence of tails, skewness, or kurtosis)
+
+# ACF
+asset_name = "(Residuals - Reliance) - "
+acf(arma_residuals, main = paste(asset_name, "ACF"))
+
+```
+
+
+##  ARMA Model - Index (Nifty 500)
+```{r}
+
+# ARMA (0,0)
+Arma00 <- arima(index, order = c(0,0,0)) # log likelihood = -1047.84,  aic = 2099.67
+summary(Arma00)
+
+# ARMA(1,0)
+Arma10 <- arima(index, order = c(1,0,0)) # log likelihood = -1047.72,  aic = 2101.44
+summary(Arma10)
+
+# ARMA(0,1)
+Arma01 <- arima(index, order = c(0,0,1)) # log likelihood = -1047.72,  aic = 2101.44
+summary(Arma01)
+
+# ARMA(1,1)
+Arma11 <- arima(index, order = c(1,0,1)) #  log likelihood = -1047.25,  aic = 2102.51
+summary(Arma11)
+
+# ARMA(2,0)
+Arma20 <- arima(index, order = c(2,0,0)) # log likelihood = -1047.69,  aic = 2103.39
+summary(Arma20)
+
+# ARMA(0,2)
+Arma02 <- arima(index, order = c(0,0,2)) # log likelihood = -1047.7,  aic = 2103.4
+summary(Arma02)
+
+# ARMA(2,2)
+Arma22 <- arima(index, order = c(2,0,2)) # log likelihood = -1046.07,  aic = 2104.14
+summary(Arma22)
+
+```
+
+
+##  Best ARMA Model - Index (Nifty 50) 
+
+```{r}
+
+cat("Best Model is ---->  ** Arma(0,0) ** ")
+
+# arma(0,0) has the lowest AIC = 2099.67
+
+Arma_residuals <- residuals(Arma00)
+
+#Heteroskedasticity
+ArchTest(Arma_residuals, lags = 10)
+# Presence of ARCH effects => consider GARCH models
+
+# White noise
+Box.test(Arma_residuals, lag = 10, type = "Ljung-Box") # p-value = 0.859
+# Residuals are not autocorrelated and behave like white noise
+
+# Normality test
+shapiro.test(Arma_residuals) 
+# Residuals are not normally distributed (presence of tails, skewness, or kurtosis)
+
+# ACF
+asset_name = "(Residuals - Nifty 50) - "
+acf(Arma_residuals, main = paste(asset_name, "ACF"))
+
+
+
+```
+
+##  Garch Model - Stock (Reliance) With arma(2,2)
+
+```{r}
+# Mean model spec (ARMA(2,2) with mean)
+mean_ <- list(armaOrder = c(2,2), include.mean = TRUE)
+
+# GARCH(1,1)
+spec_garch <- ugarchspec(
+  variance.model = list(model = "sGARCH", garchOrder = c(1,1)),
+  mean.model = mean_,
+  distribution.model = "std"
+)
+fit_garch <- ugarchfit(spec_garch, data = stock)
+show(fit_garch)
+
+
+# GJR-GARCH(1,1)
+spec_gjr <- ugarchspec(
+  variance.model = list(model = "gjrGARCH", garchOrder = c(1,1)),
+  mean.model = mean_,
+  distribution.model = "std"
+)
+fit_gjr <- ugarchfit(spec_gjr, data = stock)
+show(fit_gjr)
+
+# EGARCH(1,1)
+spec_egarch <- ugarchspec(
+  variance.model = list(model = "eGARCH", garchOrder = c(1,1)),
+  mean.model = mean_,
+  distribution.model = "std"
+)
+fit_egarch <- ugarchfit(spec_egarch, data = stock)
+show(fit_egarch)
+
+# IGARCH(1,1)
+spec_igarch <- ugarchspec(
+  variance.model = list(model = "iGARCH", garchOrder = c(1,1)),
+  mean.model = mean_,
+  distribution.model = "std"
+)
+fit_igarch <- ugarchfit(spec_igarch, data = stock)
+show(fit_igarch)
+
+# APARCH(1,1)
+spec_aparch <- ugarchspec(
+  variance.model = list(model = "apARCH", garchOrder = c(1,1)),
+  mean.model = mean_,
+  distribution.model = "std"
+)
+fit_aparch <- ugarchfit(spec_aparch, data = stock)
+show(fit_aparch)
+
+# GARCH-in-Mean(1,1)
+mean_garchm <- list(armaOrder = c(2,2), include.mean = TRUE, archm = TRUE)
+spec_garchm <- ugarchspec(
+  variance.model = list(model = "sGARCH", garchOrder = c(1,1)),
+  mean.model = mean_garchm,
+  distribution.model = "std"
+)
+fit_garchm <- ugarchfit(spec_garchm, data = stock)
+show(fit_garchm)
+
+# Compare Information Criteria 
+
+infocriteria(fit_garch)
+infocriteria(fit_gjr)
+infocriteria(fit_egarch)
+infocriteria(fit_igarch)
+infocriteria(fit_aparch)
+infocriteria(fit_garchm)
+
+```
+
+
+##  Best Garch Model - Stock (Reliance) 
+```{r}
+
+# GARCH(1,1):      Akaike (AIC): 3.465035, Bayes (BIC): 3.517685  -> Lowest AIC
+# GJR-GARCH(1,1):  Akaike (AIC): 3.477226, Bayes (BIC): 3.535726
+# EGARCH(1,1):     Akaike (AIC): 3.476196, Bayes (BIC): 3.534697
+# IGARCH(1,1):     Akaike (AIC): 3.475146, Bayes (BIC): 3.521946
+# APARCH(1,1):     Akaike (AIC): 3.467837, Bayes (BIC): 3.532187
+# GARCH-M(1,1):    Akaike (AIC): 3.477146, Bayes (BIC): 3.535646 
+
+cat("Best Model is ---->  **  garch(1,1)** ")
+# Significant: (AR1, AR2, MA1, MA2, omega, alpha1, beta1, shape)
+ 
+garch_residuals <- residuals(fit_garch, standardize = TRUE)
+
+#Heteroskedasticity
+ArchTest(garch_residuals, lags = 10) 
+# p-value = 0.08495 > 0.05 => No presence of ARCH effects
+
+# White noise
+Box.test(garch_residuals, lag = 10, type = "Ljung-Box") 
+# p-value = 0.3488 => Residuals are white noise
+
+# ACF
+asset_name = "(Garch Residuals - Reliance) - "
+acf(garch_residuals, main = paste(asset_name, "ACF"))
+# no significant autocorrelation 
+
+```
+
+##  Garch Model - Index (Nifty 50) With arma(0,0)
+```{r}
+# Mean model spec (ARMA(0,0) with mean)
+Mean_ <- list(armaOrder = c(0,0), include.mean = TRUE)
+
+# GARCH(1,1)
+Spec_garch <- ugarchspec(
+  variance.model = list(model = "sGARCH", garchOrder = c(1,1)),
+  mean.model = Mean_,
+  distribution.model = "std"
+)
+Fit_garch <- ugarchfit(Spec_garch, data = index)
+show(Fit_garch)
+
+
+# GJR-GARCH(1,1)
+Spec_gjr <- ugarchspec(
+  variance.model = list(model = "gjrGARCH", garchOrder = c(1,1)),
+  mean.model = Mean_,
+  distribution.model = "std"
+)
+Fit_gjr <- ugarchfit(Spec_gjr, data = index)
+show(Fit_gjr)
+
+# EGARCH(1,1)
+Spec_egarch <- ugarchspec(
+  variance.model = list(model = "eGARCH", garchOrder = c(1,1)),
+  mean.model = Mean_,
+  distribution.model = "std"
+)
+Fit_egarch <- ugarchfit(Spec_egarch, data = index)
+show(Fit_egarch)
+
+# EGARCH(2,1)
+Spec_egarch21 <- ugarchspec(
+  variance.model = list(model = "eGARCH", garchOrder = c(2,1)),
+  mean.model = Mean_,
+  distribution.model = "std"
+)
+Fit_egarch21 <- ugarchfit(Spec_egarch21, data = index)
+show(Fit_egarch21)
+
+# EGARCH(1,2)
+Spec_egarch12 <- ugarchspec(
+  variance.model = list(model = "eGARCH", garchOrder = c(1,2)),
+  mean.model = Mean_,
+  distribution.model = "std"
+)
+Fit_egarch12 <- ugarchfit(Spec_egarch12, data = index)
+show(Fit_egarch12)
+
+
+
+# IGARCH(1,1)
+Spec_igarch <- ugarchspec(
+  variance.model = list(model = "iGARCH", garchOrder = c(1,1)),
+  mean.model = Mean_,
+  distribution.model = "std"
+)
+Fit_igarch <- ugarchfit(Spec_igarch, data = index)
+show(Fit_igarch)
+
+# APARCH(1,1)
+Spec_aparch <- ugarchspec(
+  variance.model = list(model = "apARCH", garchOrder = c(1,1)),
+  mean.model = Mean_,
+  distribution.model = "std"
+)
+Fit_aparch <- ugarchfit(Spec_aparch, data = index)
+show(Fit_aparch)
+
+# APARCH(2,1)
+Spec_aparch21 <- ugarchspec(
+  variance.model = list(model = "apARCH", garchOrder = c(2,1)),
+  mean.model = Mean_,
+  distribution.model = "std"
+)
+Fit_aparch21 <- ugarchfit(Spec_aparch21, data = index)
+show(Fit_aparch21)
+
+# APARCH(1,2)
+Spec_aparch12 <- ugarchspec(
+  variance.model = list(model = "apARCH", garchOrder = c(1,2)),
+  mean.model = Mean_,
+  distribution.model = "std"
+)
+Fit_aparch12 <- ugarchfit(Spec_aparch12, data = index)
+show(Fit_aparch12)
+
+# APARCH(2,2)
+Spec_aparch22 <- ugarchspec(
+  variance.model = list(model = "apARCH", garchOrder = c(2,2)),
+  mean.model = Mean_,
+  distribution.model = "std"
+)
+Fit_aparch22 <- ugarchfit(Spec_aparch22, data = index)
+show(Fit_aparch22)
+
+# GARCH-in-Mean(1,1)
+Mean_garchm <- list(armaOrder = c(0,0), include.mean = TRUE, archm = TRUE)
+Spec_garchm <- ugarchspec(
+  variance.model = list(model = "sGARCH", garchOrder = c(1,1)),
+  mean.model = Mean_garchm,
+  distribution.model = "std"
+)
+Fit_garchm <- ugarchfit(Spec_garchm, data = index)
+show(Fit_garchm)
+
+# Compare Information Criteria 
+
+infocriteria(Fit_garch)
+infocriteria(Fit_gjr)
+infocriteria(Fit_egarch)
+infocriteria(Fit_egarch21)
+infocriteria(Fit_egarch12)
+infocriteria(Fit_igarch)
+infocriteria(Fit_aparch)
+infocriteria(Fit_aparch21)
+infocriteria(Fit_aparch12)
+infocriteria(Fit_aparch22)
+infocriteria(Fit_garchm)
+
+
+
+```
+
+
+##  Best Garch Model - Index (Nifty 50) with arma(0,0) 
+```{r}
+# GARCH(1,1):      Akaike (AIC): 2.459629, Bayes (BIC): 2.488879
+# GJR-GARCH(1,1):  Akaike (AIC): 2.445246, Bayes (BIC): 2.480346
+# EGARCH(1,1):     Akaike (AIC): 2.438112, Bayes (BIC): 2.473212
+# EGARCH(2,1):     Akaike (AIC): 2.438112, Bayes (BIC): 2.473212
+# EGARCH(1,2):     Akaike (AIC): 2.438112, Bayes (BIC): 2.473212
+# IGARCH(1,1):     Akaike (AIC): 2.465607, Bayes (BIC): 2.489007
+# APARCH(1,1):     Akaike (AIC): 2.437239, Bayes (BIC): 2.478189
+# APARCH(2,1):     Akaike (AIC): 2.442094, Bayes (BIC): 2.494745
+# APARCH(1,2):     Akaike (AIC): 2.438205, Bayes (BIC): 2.485006
+# APARCH(2,2):     Akaike (AIC): 2.443199, Bayes (BIC): 2.501699
+# GARCH-M(1,1):    Akaike (AIC): 2.461007, Bayes (BIC): 2.496107
+
+
+cat("Best Model is ---->  **  aparch(1,1)** ")
+# aparch (1,1) has lowest AIC, then egarch(1,1). 
+# also, apARCH has all significant coefficients while eGARCH's ω (omega) is not significant.
+# Tried Aparch(1,2), Aparch(2,1) - they have same AIC value and same case with egarach(1,2), egarach(2,1)
+ 
+Garch_residuals <- residuals(Fit_aparch, standardize = TRUE)
+
+#Heteroskedasticity
+ArchTest(Garch_residuals, lags = 10) 
+# p-value = 0.0009728 < 0.05 =>  presence of ARCH effects
+# aparch(1,1) and egarch(1,1) are the two best model, but both have arch effect, even their high order.
+
+# White noise
+Box.test(Garch_residuals, lag = 10, type = "Ljung-Box") 
+# p-value = 0.9329 => Residuals are white noise
+
+# ACF
+asset_name = "(Garch Residuals - Nifty 50) - "
+acf(Garch_residuals, main = paste(asset_name, "ACF"))
+# no significant autocorrelation 
+
+
+
+```
+
+
+# conditional variance - Stock (Reliance) with best Garch(1,1) - arma(2,2)
+``` {r}
+cond_var_garch      <- sigma(fit_garch)^2
+cond_var_gjr        <- sigma(fit_gjr)^2
+cond_var_egarch     <- sigma(fit_egarch)^2
+cond_var_igarch     <- sigma(fit_igarch)^2
+cond_var_aparch     <- sigma(fit_aparch)^2
+cond_var_garchm     <- sigma(fit_garchm)^2
+
+# Best Model
+plot(cond_var_garch, type = "l", col = "blue", 
+     main = "Conditional Variance - (Garch(1,1)+ arma(2,2))",
+     xlab = "Time", ylab = "Conditional Variance")
+
+plot(cond_var_garch, type = "l", col = "blue", 
+     main = "Comparison of Conditional Variances ",
+     xlab = "Time", ylab = "Conditional Variance",
+     ylim = range(c(cond_var_garch, cond_var_gjr, cond_var_egarch, 
+                    cond_var_igarch, cond_var_aparch, cond_var_garchm), na.rm = TRUE))
+lines(cond_var_gjr, col = "red")
+lines(cond_var_egarch, col = "green")
+lines(cond_var_igarch, col = "purple")
+lines(cond_var_aparch, col = "orange")
+lines(cond_var_garchm, col = "brown")
+legend("topright", 
+       legend = c("GARCH", "GJR-GARCH", "EGARCH", "IGARCH", "APARCH", "GARCH-M"),
+       col = c("blue", "red", "green", "purple", "orange", "brown"),
+       lty = 1, cex = 0.8)
+
+
+```
+
+# conditional mean - Stock (Reliance) with best Garch(1,1) - arma(2,2)
+``` {r}
+cond_mean_garch <- fitted(fit_garch)
+
+# Plot conditional mean
+plot(cond_mean_garch, type = "l", col = "blue", lwd = 2,
+     main = "Conditional Mean - Garch(1,1) +arma(0,0)",
+     ylab = "Conditional Mean", xlab = "Time")
+
+```
+
+# conditional variance - Index (Nifty 50) with  aparch(1,1) + arma(0,0)
+``` {r}
+
+Cond_var_garch      <- sigma(Fit_garch)^2
+Cond_var_gjr        <- sigma(Fit_gjr)^2
+Cond_var_egarch     <- sigma(Fit_egarch)^2
+Cond_var_igarch     <- sigma(Fit_igarch)^2
+Cond_var_aparch     <- sigma(Fit_aparch)^2
+Cond_var_garchm     <- sigma(Fit_garchm)^2
+
+# Best Model
+plot(Cond_var_garch, type = "l", col = "blue", 
+     main = "Conditional Variance - aparch(1,1) + arma(0,0))",
+     xlab = "Time", ylab = "Conditional Variance")
+
+plot(Cond_var_garch, type = "l", col = "blue", 
+     main = "Comparison of Conditional Variances ",
+     xlab = "Time", ylab = "Conditional Variance",
+     ylim = range(c(Cond_var_garch, Cond_var_gjr, Cond_var_egarch, 
+                    Cond_var_igarch, Cond_var_aparch, Cond_var_garchm), na.rm = TRUE))
+lines(Cond_var_gjr, col = "red")
+lines(Cond_var_egarch, col = "green")
+lines(Cond_var_igarch, col = "purple")
+lines(Cond_var_aparch, col = "orange")
+lines(Cond_var_garchm, col = "brown")
+legend("topright", 
+       legend = c("GARCH", "GJR-GARCH", "EGARCH", "IGARCH", "APARCH", "GARCH-M"),
+       col = c("blue", "red", "green", "purple", "orange", "brown"),
+       lty = 1, cex = 0.8)
+
+
+```
+
+# conditional mean - Index (Nifty 50) with aparch(1,1) + arma(0,0)
+``` {r}
+Cond_mean_garch <- fitted(Fit_aparch)
+
+# Plot conditional mean
+plot(Cond_mean_garch, type = "l", col = "blue", lwd = 2,
+     main = "Conditional Mean - aparch(1,1) + arma(0,0)",
+     ylab = "Conditional Mean", xlab = "Time")
+```
+
+
+
+# Forecast for Stock Reliance
+``` {r}
+# next 5 days Forecast
+forecast <- ugarchforecast(fit_garch, n.ahead = 5)
+sigma_forecast <- sigma(forecast)
+show(sigma_forecast)
+
+# Volatility is increasing slightly daily, which means model expects increase in risk (slightly) over next 5 days, won't #affect stability of market that much 
+
+```
+
+# Forecast for Index Nifty 50
+``` {r}
+# next 5 days Forecast
+Forecast <- ugarchforecast(Fit_aparch, n.ahead = 5)
+Sigma_forecast <- sigma(Forecast)
+show(Sigma_forecast)
+
+# Volatility is slowly decreasing slightly, model expects market to be less risky over the next 5 days, suggesting a calm # # period ahead.
+```
