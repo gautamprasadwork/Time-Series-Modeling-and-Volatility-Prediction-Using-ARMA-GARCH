@@ -2,7 +2,7 @@
 Predicting volatility and conditional mean of time series data using ARMA-GARCH models to better capture market dynamics and improve forecasts in R
 
 
-# Time Series Modeling of Reliance Stock and Nifty 50 Index
+# Reliance Stock and Nifty 50 Index
 
 This project applies ARMA-GARCH modeling techniques to analyze and forecast the volatility of **Reliance Industries stock** and the **NIFTY 50 Index**. It aims to demonstrate volatility clustering, return forecasting, and risk analysis using real-world financial time series data.
 
