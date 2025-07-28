@@ -20,11 +20,6 @@ This project applies ARMA-GARCH modeling techniques to analyze and forecast the 
 - Model selection using **AIC/BIC**
 - Residual diagnostics and volatility plots
 
-## 📁 Files Included
-
-- `Time Series Modeling.html`: Final rendered report containing analysis, plots, results, and interpretations.
-- Python or R notebook source files (not included here — add if available).
-
 ## 📌 Key Takeaways
 
 - Volatility is persistent and clusters over time.
@@ -37,14 +32,4 @@ This project applies ARMA-GARCH modeling techniques to analyze and forecast the 
 - `rugarch` / `arch` / `forecast` / `tseries`
 - Jupyter / RMarkdown (for rendering the HTML report)
 
-## 👤 Author
 
-**Gautam Prasad**  
-Master’s Student – Quantitative Finance  
-Poznań University of Economics and Business  
-[LinkedIn](https://www.linkedin.com/in/gautamprasadwork)
-
----
-
-> 📅 Report Generated: July 3, 2025  
-> 📌 For academic and research use only.
