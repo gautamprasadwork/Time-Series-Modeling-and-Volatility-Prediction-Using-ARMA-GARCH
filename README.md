@@ -28,8 +28,8 @@ This project applies ARMA-GARCH modeling techniques to analyze and forecast the 
 
 ## 🔧 Tools & Libraries
 
-- R / Python (assumed based on report structure)
+- R 
 - `rugarch` / `arch` / `forecast` / `tseries`
-- Jupyter / RMarkdown (for rendering the HTML report)
+- RMarkdown (for rendering the HTML report)
 
 
